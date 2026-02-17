@@ -31,3 +31,16 @@
   - 子模块: `mcp_servers`
   - 子模块路径: `src/agent/mcp_servers/`
   - 用于放置可被 Agent 连接的 MCP server（例如 `web_server.py`）
+
+- ### HeartbeatMonitor
+  - 维持心率: 心率越高，llm越有可能产生一次调用
+  - 当llm发出一次调用，进入紧张阶段，此时若外部与其反馈，则检测是否和其相关，若相关则做出回应维持；否则快速进入心率为0阶段
+  - 心率为0时，持续监听外部输入，并缓慢增长，被唤醒几率逐渐增加
+  - 在任何情况下被at / 在紧张状态时检测到用户与之互动则进入紧张状态
+
+- ### Config
+  - 负责统一管理依赖相关配置，并构建默认依赖实例
+  - 模块路径: `src/config/`
+  - 配置模板: `config/dependencies.example.json`（可提交）
+  - 本地依赖配置: `config/dependencies.local.json`（已加入 `.gitignore`，不提交）
+  - 读取顺序: 优先本地配置文件，其次环境变量（`LLM_*` / `MCP_*`）

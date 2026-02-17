@@ -1,0 +1,23 @@
+{
+  "llm": {
+    "api_url": "https://example.com/llm",
+    "api_key": "replace-with-your-key",
+    "timeout": 15,
+    "model": "default"
+  },
+  "mcp": {
+    "enabled": false,
+    "server_cmd": "python -m src.agent.mcp_servers.web_server",
+    "request_timeout": 10,
+    "startup_timeout": 15
+  },
+  "agent": {
+    "max_steps": 3
+  },
+  "memory": {
+    "file_path": "data/memory_pool.jsonl"
+  },
+  "context": {
+    "recent_limit": 100
+  }
+}
