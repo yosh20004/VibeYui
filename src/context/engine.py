@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from src.heartbeat import HeartbeatMonitor
 from src.memory import MemoryPool
 
 
@@ -11,6 +12,7 @@ class ContextEngine:
     """Manage only recent context and delegate long-term memory to MemoryPool."""
 
     memory_pool: MemoryPool
+    heartbeat_monitor: HeartbeatMonitor = field(default_factory=HeartbeatMonitor)
     recent_limit: int = 100
     _recent_context: list[str] = field(default_factory=list, init=False, repr=False)
 
@@ -26,15 +28,19 @@ class ContextEngine:
     ) -> str | None:
         """
         Process user message by rule:
-        - direct-to-ai: process immediately
-        - not direct-to-ai: only record
+        - direct-to-ai: always process
+        - non-direct: process by heartbeat state machine
         """
         clean_msg = usr_msg.strip()
         if not clean_msg:
             return None
 
         user_item = f"user: {clean_msg}"
-        if not is_direct_to_ai:
+        should_call = self.heartbeat_monitor.should_invoke_llm(
+            clean_msg,
+            is_at_message=is_direct_to_ai,
+        )
+        if not should_call:
             self._remember(user_item)
             return None
 
@@ -42,6 +48,7 @@ class ContextEngine:
         self._remember(user_item)
         reply = processor(composed)
         self._remember(f"assistant: {reply}")
+        self.heartbeat_monitor.on_llm_invoked(clean_msg, reply)
         return reply
 
     def _compose_input(self, current_msg: str) -> str:
