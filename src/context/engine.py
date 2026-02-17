@@ -3,14 +3,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from src.memory import MemoryPool
+
 
 @dataclass(slots=True)
 class ContextEngine:
-    """Manage short-term memory and route user messages by intent."""
+    """Manage only recent context and delegate long-term memory to MemoryPool."""
 
-    max_memory: int = 100
-    context_window: int = 12
-    _memory: list[str] = field(default_factory=list, init=False, repr=False)
+    memory_pool: MemoryPool
+    recent_limit: int = 100
+    _recent_context: list[str] = field(default_factory=list, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._recent_context = self.memory_pool.recent(self.recent_limit)
 
     def handle_usr_msg(
         self,
@@ -28,18 +33,19 @@ class ContextEngine:
         if not clean_msg:
             return None
 
+        user_item = f"user: {clean_msg}"
         if not is_direct_to_ai:
-            self._remember(f"user: {clean_msg}")
+            self._remember(user_item)
             return None
 
         composed = self._compose_input(clean_msg)
-        self._remember(f"user: {clean_msg}")
+        self._remember(user_item)
         reply = processor(composed)
         self._remember(f"assistant: {reply}")
         return reply
 
     def _compose_input(self, current_msg: str) -> str:
-        history = self._memory[-self.context_window :]
+        history = self._recent_context
         if not history:
             return current_msg
 
@@ -51,6 +57,7 @@ class ContextEngine:
         )
 
     def _remember(self, item: str) -> None:
-        self._memory.append(item)
-        if len(self._memory) > self.max_memory:
-            self._memory = self._memory[-self.max_memory :]
+        self.memory_pool.append(item)
+        self._recent_context.append(item)
+        if len(self._recent_context) > self.recent_limit:
+            self._recent_context = self._recent_context[-self.recent_limit :]

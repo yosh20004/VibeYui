@@ -9,7 +9,11 @@
   - 负责处理输入，并返回api服务结果
   
 - ### Context Engine
-  - 负责处理记忆
+  - 只负责处理最近上下文（默认最近100条）
   - 若usr_msg是向ai发起的，则立刻处理
   - 若不是，则记录
-  - 已接入Router：普通消息只记录，@消息立即调用LLM并携带近期记忆
+
+- ### Memory Pool
+  - 负责管理更远期记忆（长时记忆）
+  - 写入时立即落盘（`data/memory_pool.jsonl`）防止丢失
+  - Context Engine 启动时从 Memory Pool 回填最近上下文

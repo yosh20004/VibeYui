@@ -3,6 +3,7 @@ from typing import Any
 
 from src.context import ContextEngine
 from src.llm import LLMService
+from src.memory import MemoryPool
 
 from .structured_service import StructuredService
 
@@ -20,11 +21,13 @@ class Router:
         self,
         structured_service: StructuredService | None = None,
         llm_service: LLMService | None = None,
+        memory_pool: MemoryPool | None = None,
         context_engine: ContextEngine | None = None,
     ) -> None:
         self._structured_service = structured_service or StructuredService()
         self._llm_service = llm_service or LLMService()
-        self._context_engine = context_engine or ContextEngine()
+        self._memory_pool = memory_pool or MemoryPool()
+        self._context_engine = context_engine or ContextEngine(memory_pool=self._memory_pool)
 
     def route(
         self,
