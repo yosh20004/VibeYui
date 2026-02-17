@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.agent import AgentService
 from src.context import ContextEngine
 from src.llm import LLMService
 from src.memory import MemoryPool
@@ -20,12 +21,14 @@ class Router:
     def __init__(
         self,
         structured_service: StructuredService | None = None,
+        agent_service: AgentService | None = None,
         llm_service: LLMService | None = None,
         memory_pool: MemoryPool | None = None,
         context_engine: ContextEngine | None = None,
     ) -> None:
         self._structured_service = structured_service or StructuredService()
         self._llm_service = llm_service or LLMService()
+        self._agent_service = agent_service or AgentService(llm_service=self._llm_service)
         self._memory_pool = memory_pool or MemoryPool()
         self._context_engine = context_engine or ContextEngine(memory_pool=self._memory_pool)
 
@@ -52,7 +55,7 @@ class Router:
         return self._context_engine.handle_usr_msg(
             msg,
             is_direct_to_ai=False,
-            processor=lambda content: self._llm_service.process_input(
+            processor=lambda content: self._agent_service.process_input(
                 content,
                 is_at_message=False,
             ),
@@ -62,7 +65,7 @@ class Router:
         result = self._context_engine.handle_usr_msg(
             msg,
             is_direct_to_ai=True,
-            processor=lambda content: self._llm_service.process_input(
+            processor=lambda content: self._agent_service.process_input(
                 content,
                 is_at_message=True,
             ),
@@ -74,5 +77,8 @@ class Router:
             return self._structured_service.handle_help()
         if command.name == "ping":
             return self._structured_service.handle_ping()
+        if command.name == "mcp_tools":
+            tools = self._agent_service.list_mcp_tools()
+            return self._structured_service.handle_mcp_tools(tools)
 
         return f"不支持的命令: {command.name}"
