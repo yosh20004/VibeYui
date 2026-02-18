@@ -4,6 +4,8 @@ import random
 import re
 from dataclasses import dataclass, field
 
+from .sqlite_store import HeartbeatSQLiteStore, HeartbeatState
+
 
 @dataclass(slots=True)
 class HeartbeatMonitor:
@@ -14,10 +16,22 @@ class HeartbeatMonitor:
     idle_growth: float = 2.0
     tense_boost: float = 24.0
     tense_floor: float = 60.0
+    state_store: HeartbeatSQLiteStore | None = None
+    state_scope: str = "default"
     _heartbeat: float = 0.0
     _tense: bool = False
     _focus_text: str = ""
     _rng: random.Random = field(default_factory=random.Random, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.state_store is None:
+            return
+        loaded = self.state_store.load(self.state_scope)
+        if loaded is None:
+            return
+        self._heartbeat = min(self.max_heartbeat, max(0.0, loaded.heartbeat))
+        self._tense = bool(loaded.is_tense)
+        self._focus_text = loaded.focus_text.strip()
 
     @property
     def heartbeat(self) -> float:
@@ -35,27 +49,33 @@ class HeartbeatMonitor:
         if is_at_message:
             self._set_tense(clean)
             self._raise_heartbeat(self.tense_boost)
+            self._persist()
             return True
 
         if self._tense:
             if self._is_related(clean):
                 self._set_tense(clean)
                 self._raise_heartbeat(self.tense_boost)
+                self._persist()
                 return True
             self._drop_to_zero()
+            self._persist()
             return False
 
         self._grow_idle_heartbeat()
         trigger_prob = self._heartbeat / self.max_heartbeat
         if self._rng.random() < trigger_prob:
             self._set_tense(clean)
+            self._persist()
             return True
+        self._persist()
         return False
 
     def on_llm_invoked(self, trigger_message: str, reply: str) -> None:
         merged_focus = f"{trigger_message.strip()} {reply.strip()}".strip()
         self._set_tense(merged_focus)
         self._raise_heartbeat(self.tense_boost)
+        self._persist()
 
     def _grow_idle_heartbeat(self) -> None:
         if self._heartbeat <= 0:
@@ -74,6 +94,18 @@ class HeartbeatMonitor:
     def _set_tense(self, focus: str) -> None:
         self._tense = True
         self._focus_text = focus.strip()
+
+    def _persist(self) -> None:
+        if self.state_store is None:
+            return
+        self.state_store.save(
+            self.state_scope,
+            HeartbeatState(
+                heartbeat=self._heartbeat,
+                is_tense=self._tense,
+                focus_text=self._focus_text,
+            ),
+        )
 
     def _is_related(self, message: str) -> bool:
         if not self._focus_text:

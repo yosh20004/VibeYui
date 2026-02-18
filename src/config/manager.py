@@ -7,16 +7,20 @@ from pathlib import Path
 from typing import Any
 
 from src.agent.service import AgentService, OfficialMCPClient
+from src.core import MessageWorkflow
 from src.context import ContextEngine
+from src.heartbeat import HeartbeatMonitor, HeartbeatSQLiteStore
 from src.llm import LLMService
 from src.memory import MemoryPool
+from src.router import Router
 
 
 @dataclass(slots=True)
 class ConfigManager:
     """Load dependency settings and construct default service dependencies."""
 
-    dependency_file: Path = Path("config/dependencies.local.json")
+    dependency_file: Path = Path("data/dependencies.local.json")
+    legacy_dependency_file: Path = Path("config/dependencies.local.json")
     _raw: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -24,11 +28,15 @@ class ConfigManager:
 
     def reload(self) -> None:
         self._raw = {}
-        if not self.dependency_file.exists():
+        target = self.dependency_file
+        if not target.exists() and self.legacy_dependency_file.exists():
+            target = self.legacy_dependency_file
+
+        if not target.exists():
             return
 
         try:
-            parsed = json.loads(self.dependency_file.read_text(encoding="utf-8"))
+            parsed = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return
 
@@ -86,9 +94,53 @@ class ConfigManager:
 
     def build_context_engine(self, memory_pool: MemoryPool) -> ContextEngine:
         context = self.section("context")
+        heartbeat = self.section("heartbeat")
+        heartbeat_store = HeartbeatSQLiteStore(
+            db_path=Path(self._pick_str(heartbeat, "sqlite_path", default="data/heartbeat.db") or "data/heartbeat.db")
+        )
+        heartbeat_monitor = HeartbeatMonitor(
+            state_store=heartbeat_store,
+            state_scope=self._pick_str(heartbeat, "scope", default="default") or "default",
+        )
         return ContextEngine(
             memory_pool=memory_pool,
+            heartbeat_monitor=heartbeat_monitor,
             recent_limit=self._pick_int(context, "recent_limit", default=100),
+        )
+
+    def build_router(
+        self,
+        *,
+        llm_service: LLMService | None = None,
+        agent_service: AgentService | None = None,
+        memory_pool: MemoryPool | None = None,
+        context_engine: ContextEngine | None = None,
+    ) -> Router:
+        resolved_llm = llm_service or self.build_llm_service()
+        resolved_memory = memory_pool or self.build_memory_pool()
+        resolved_context = context_engine or self.build_context_engine(resolved_memory)
+        resolved_agent = agent_service or self.build_agent_service(resolved_llm)
+        qq = self.section("qq")
+        allowed_group_ids = set(self._pick_int_list(qq, "allowed_group_ids", env_key="QQ_ALLOWED_GROUP_IDS"))
+        return Router(
+            llm_service=resolved_llm,
+            agent_service=resolved_agent,
+            memory_pool=resolved_memory,
+            context_engine=resolved_context,
+            allowed_group_ids=allowed_group_ids,
+        )
+
+    def build_message_workflow(
+        self,
+        *,
+        router: Router | None = None,
+        context_engine: ContextEngine | None = None,
+    ) -> MessageWorkflow:
+        resolved_router = router or self.build_router(context_engine=context_engine)
+        resolved_context = context_engine or resolved_router.context_engine
+        return MessageWorkflow(
+            router=resolved_router,
+            context_engine=resolved_context,
         )
 
     def _pick_str(
@@ -157,3 +209,32 @@ class ConfigManager:
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return default
+
+    def _pick_int_list(
+        self,
+        section: dict[str, Any],
+        key: str,
+        *,
+        env_key: str | None = None,
+    ) -> list[int]:
+        value: Any = section.get(key)
+        if value is None and env_key:
+            value = os.getenv(env_key)
+
+        items: list[Any]
+        if isinstance(value, str):
+            items = [part.strip() for part in value.split(",")]
+        elif isinstance(value, list):
+            items = value
+        else:
+            return []
+
+        parsed: list[int] = []
+        for item in items:
+            try:
+                group_id = int(item)
+            except (TypeError, ValueError):
+                continue
+            if group_id > 0:
+                parsed.append(group_id)
+        return parsed

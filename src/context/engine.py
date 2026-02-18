@@ -35,23 +35,22 @@ class ContextEngine:
         if not clean_msg:
             return None
 
-        user_item = f"user: {clean_msg}"
         should_call = self.heartbeat_monitor.should_invoke_llm(
             clean_msg,
             is_at_message=is_direct_to_ai,
         )
         if not should_call:
-            self._remember(user_item)
+            self.remember_user_message(clean_msg)
             return None
 
-        composed = self._compose_input(clean_msg)
-        self._remember(user_item)
+        composed = self.compose_input(clean_msg)
+        self.remember_user_message(clean_msg)
         reply = processor(composed)
-        self._remember(f"assistant: {reply}")
+        self.remember_assistant_message(reply)
         self.heartbeat_monitor.on_llm_invoked(clean_msg, reply)
         return reply
 
-    def _compose_input(self, current_msg: str) -> str:
+    def compose_input(self, current_msg: str) -> str:
         history = self._recent_context
         if not history:
             return current_msg
@@ -62,6 +61,18 @@ class ContextEngine:
             f"{'\n'.join(history)}\n"
             f"当前用户输入:\n{current_msg}"
         )
+
+    def remember_user_message(self, msg: str) -> None:
+        clean = msg.strip()
+        if not clean:
+            return
+        self._remember(f"user: {clean}")
+
+    def remember_assistant_message(self, msg: str) -> None:
+        clean = msg.strip()
+        if not clean:
+            return
+        self._remember(f"assistant: {clean}")
 
     def _remember(self, item: str) -> None:
         self.memory_pool.append(item)

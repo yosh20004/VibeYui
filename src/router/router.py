@@ -25,12 +25,14 @@ class Router:
         llm_service: LLMService | None = None,
         memory_pool: MemoryPool | None = None,
         context_engine: ContextEngine | None = None,
+        allowed_group_ids: set[int] | None = None,
     ) -> None:
         self._structured_service = structured_service or StructuredService()
         self._llm_service = llm_service or LLMService()
         self._agent_service = agent_service or AgentService(llm_service=self._llm_service)
         self._memory_pool = memory_pool or MemoryPool()
         self._context_engine = context_engine or ContextEngine(memory_pool=self._memory_pool)
+        self._allowed_group_ids = set(allowed_group_ids or set())
 
     def route(
         self,
@@ -41,34 +43,54 @@ class Router:
     ) -> str | None:
         """Unified entry for normal message, @ input, and structured command."""
         if command is not None:
-            return self._handle_structured_command(command)
+            return self.handle_structured(command)
 
-        if msg is None:
+        clean = self.normalize_text(msg)
+        if clean is None:
             return None
 
         if at_user:
-            return self._handle_at_message(msg)
+            return self._handle_at_message(clean)
 
-        return self._handle_message(msg)
+        return self._handle_message(clean)
+
+    def normalize_text(self, msg: str | None) -> str | None:
+        if msg is None:
+            return None
+        clean = msg.strip()
+        return clean or None
+
+    def should_process_message(self, *, source: str, group_id: int | None) -> bool:
+        if source != "qq_group":
+            return True
+        if not self._allowed_group_ids:
+            return True
+        if group_id is None:
+            return False
+        return group_id in self._allowed_group_ids
+
+    def process_agent(self, content: str, *, is_at_message: bool) -> str:
+        return self._agent_service.process_input(content, is_at_message=is_at_message)
+
+    def handle_structured(self, command: StructuredCommand) -> str:
+        return self._handle_structured_command(command)
+
+    @property
+    def context_engine(self) -> ContextEngine:
+        return self._context_engine
 
     def _handle_message(self, msg: str) -> str | None:
         return self._context_engine.handle_usr_msg(
             msg,
             is_direct_to_ai=False,
-            processor=lambda content: self._agent_service.process_input(
-                content,
-                is_at_message=False,
-            ),
+            processor=lambda content: self.process_agent(content, is_at_message=False),
         )
 
     def _handle_at_message(self, msg: str) -> str:
         result = self._context_engine.handle_usr_msg(
             msg,
             is_direct_to_ai=True,
-            processor=lambda content: self._agent_service.process_input(
-                content,
-                is_at_message=True,
-            ),
+            processor=lambda content: self.process_agent(content, is_at_message=True),
         )
         return result or "输入不能为空。"
 

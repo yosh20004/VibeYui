@@ -11,6 +11,7 @@
 ## 核心组件
 - ### Router
   - 负责接收用户at和一般输入，并进行处理
+  - 提供文本规范化、结构化命令处理、Agent调用三个可独立替换接口
 
 - ### LLM
   - 负责处理输入，并返回api服务结果
@@ -37,14 +38,56 @@
   - 当llm发出一次调用，进入紧张阶段，此时若外部与其反馈，则检测是否和其相关，若相关则做出回应维持；否则快速进入心率为0阶段
   - 心率为0时，持续监听外部输入，并缓慢增长，被唤醒几率逐渐增加
   - 在任何情况下被at / 在紧张状态时检测到用户与之互动则进入紧张状态
+  - 支持将心跳状态持久化到 SQLite（默认 `data/heartbeat.db`）
 
 - ### Config
   - 负责统一管理依赖相关配置，并构建默认依赖实例
   - 模块路径: `src/config/`
   - 配置模板: `config/dependencies.example.json`（可提交）
-  - 本地依赖配置: `config/dependencies.local.json`（已加入 `.gitignore`，不提交）
+  - 本地依赖配置: `data/dependencies.local.json`（已加入 `.gitignore`，不提交）
+  - 兼容旧路径: 若 `data/dependencies.local.json` 不存在，会读取 `config/dependencies.local.json`
   - 读取顺序: 优先本地配置文件，其次环境变量（`LLM_*` / `MCP_*`）
+  - 新增 QQ 群白名单配置 `qq.allowed_group_ids`，仅允许指定群号触发 LLM 处理
 
 - ### Adapter
   - 基于NoneBot接受外部事件和群聊消息
   - 获取群聊消息，并与核心组件交互做出回复
+
+- ### Workflow
+  - 核心编排层已划分到 `src/core/workflow.py`
+  - 只保留 `src/core` 单一入口，不再保留兼容别名层
+  - 通过 `RouterPort / ContextPort / HeartbeatPort` 协议解耦实现
+  - `MessageWorkflow` 显式流程为:
+    `adapter -> router -> heartbeat -> context -> agent`
+  - 内置 `LoggingHook` 打印工作日志，支持自定义 Hook 进行可插拔扩展
+
+## 工作流接入示例
+```python
+from src.config import ConfigManager
+
+config = ConfigManager()
+workflow = config.build_message_workflow()
+
+# 在 adapter 捕获消息后调用
+reply = workflow.process("今天吃什么", at_user=False, source="qq_group")
+if reply:
+    print(reply)
+```
+
+若启用群白名单，请在调用时透传 `group_id`:
+```python
+reply = workflow.process(
+    "今天吃什么",
+    at_user=False,
+    source="qq_group",
+    group_id=123456789,
+)
+```
+
+## 工作日志示例
+```text
+[workflow] adapter.captured | {'source': 'qq_group', 'message': '今天吃什么', 'at_user': False}
+[workflow] heartbeat.checked | {'should_reply': True, 'heartbeat': 64.0, 'is_tense': True}
+[workflow] context.composed | {'has_history': True}
+[workflow] workflow.replied | {'reply': '...'}
+```

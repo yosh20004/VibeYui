@@ -19,5 +19,12 @@
   },
   "context": {
     "recent_limit": 100
+  },
+  "heartbeat": {
+    "sqlite_path": "data/heartbeat.db",
+    "scope": "default"
+  },
+  "qq": {
+    "allowed_group_ids": [123456789]
   }
 }
