@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
-from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 
 @dataclass(slots=True)
@@ -31,40 +29,39 @@ class LLMService:
         if not self.api_url:
             return "未配置 LLM API 地址（LLM_API_URL）。"
 
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "input": content,
-            "meta": {"at_user": is_at_message},
-        }
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-
-        request = Request(
-            url=self.api_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
+        try:
+            client = OpenAI(
+                api_key=self.api_key or None,
+                base_url=self.api_url,
+                timeout=self.timeout,
+            )
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": content,
+                    }
+                ],
+                extra_body={"meta": {"at_user": is_at_message}},
+            )
+        except APIStatusError as exc:
+            body = ""
+            try:
+                body = str(exc.response.text).strip()
+            except Exception:
+                body = str(exc).strip()
+            return f"LLM API 请求失败: HTTP {exc.status_code} {body}".strip()
+        except (APITimeoutError, APIConnectionError) as exc:
+            return f"LLM API 请求失败: {exc}"
+        except Exception as exc:
+            return f"LLM API 请求失败: {exc}"
 
         try:
-            with urlopen(request, timeout=self.timeout) as response:
-                raw = response.read().decode("utf-8")
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            return f"LLM API 请求失败: HTTP {exc.code} {detail}".strip()
-        except URLError as exc:
-            return f"LLM API 请求失败: {exc.reason}"
+            text = response.choices[0].message.content
+        except Exception:
+            text = None
 
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return raw.strip() or "LLM API 返回为空。"
-
-        if isinstance(parsed, dict):
-            for key in ("output", "result", "message", "text"):
-                value = parsed.get(key)
-                if isinstance(value, str):
-                    return value
-
-        return raw.strip() or "LLM API 返回为空。"
+        if isinstance(text, str) and text.strip():
+            return text
+        return "LLM API 返回为空。"
