@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import random
 import re
+import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 from .sqlite_store import HeartbeatSQLiteStore, HeartbeatState
 
@@ -16,12 +18,15 @@ class HeartbeatMonitor:
     idle_growth: float = 2.0
     tense_boost: float = 24.0
     tense_floor: float = 60.0
+    tense_hold_seconds: int = 15 * 60
     state_store: HeartbeatSQLiteStore | None = None
     state_scope: str = "default"
     _heartbeat: float = 0.0
     _tense: bool = False
     _focus_text: str = ""
+    _tense_until_ts: int = 0
     _rng: random.Random = field(default_factory=random.Random, repr=False)
+    _time_fn: Callable[[], float] = field(default=time.time, repr=False)
 
     def __post_init__(self) -> None:
         if self.state_store is None:
@@ -32,6 +37,8 @@ class HeartbeatMonitor:
         self._heartbeat = min(self.max_heartbeat, max(0.0, loaded.heartbeat))
         self._tense = bool(loaded.is_tense)
         self._focus_text = loaded.focus_text.strip()
+        self._tense_until_ts = int(loaded.tense_until_ts)
+        self._refresh_tense_flag()
 
     @property
     def heartbeat(self) -> float:
@@ -48,14 +55,16 @@ class HeartbeatMonitor:
 
         if is_at_message:
             self._set_tense(clean)
-            self._raise_heartbeat(self.tense_boost)
+            self._mark_tense_hold()
             self._persist()
             return True
 
+        self._refresh_tense_flag()
         if self._tense:
-            if self._is_related(clean):
-                self._set_tense(clean)
-                self._raise_heartbeat(self.tense_boost)
+            if self._is_hold_active():
+                if self._is_related(clean):
+                    self._set_tense(clean)
+                    self._mark_tense_hold()
                 self._persist()
                 return True
             self._drop_to_zero()
@@ -74,7 +83,7 @@ class HeartbeatMonitor:
     def on_llm_invoked(self, trigger_message: str, reply: str) -> None:
         merged_focus = f"{trigger_message.strip()} {reply.strip()}".strip()
         self._set_tense(merged_focus)
-        self._raise_heartbeat(self.tense_boost)
+        self._mark_tense_hold()
         self._persist()
 
     def _grow_idle_heartbeat(self) -> None:
@@ -90,10 +99,21 @@ class HeartbeatMonitor:
         self._heartbeat = 0.0
         self._tense = False
         self._focus_text = ""
+        self._tense_until_ts = 0
 
     def _set_tense(self, focus: str) -> None:
         self._tense = True
         self._focus_text = focus.strip()
+
+    def _mark_tense_hold(self) -> None:
+        self._tense_until_ts = int(self._time_fn()) + max(1, int(self.tense_hold_seconds))
+
+    def _is_hold_active(self) -> bool:
+        return self._tense_until_ts > 0 and int(self._time_fn()) < self._tense_until_ts
+
+    def _refresh_tense_flag(self) -> None:
+        if self._tense and self._tense_until_ts > 0 and not self._is_hold_active():
+            self._drop_to_zero()
 
     def _persist(self) -> None:
         if self.state_store is None:
@@ -104,6 +124,7 @@ class HeartbeatMonitor:
                 heartbeat=self._heartbeat,
                 is_tense=self._tense,
                 focus_text=self._focus_text,
+                tense_until_ts=self._tense_until_ts,
             ),
         )
 

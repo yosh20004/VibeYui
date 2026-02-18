@@ -14,6 +14,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from src.llm import LLMService
+from src.prompting import ReplyMode
 
 
 class MCPError(RuntimeError):
@@ -180,20 +181,38 @@ class AgentService:
         self.mcp_client = OfficialMCPClient(command=server_cmd, request_timeout=timeout)
         self._start_mcp()
 
-    def process_input(self, content: str, *, is_at_message: bool = False) -> str:
+    def process_input(
+        self,
+        content: str,
+        *,
+        is_at_message: bool = False,
+        reply_mode: ReplyMode = "auto",
+    ) -> str:
         if self.mcp_client is None:
-            return self.llm_service.process_input(content, is_at_message=is_at_message)
+            return self.llm_service.process_input(
+                content,
+                is_at_message=is_at_message,
+                reply_mode=reply_mode,
+            )
 
         if not self._cached_tools:
             try:
                 self._cached_tools = self.mcp_client.list_tools()
             except MCPError:
-                return self.llm_service.process_input(content, is_at_message=is_at_message)
+                return self.llm_service.process_input(
+                    content,
+                    is_at_message=is_at_message,
+                    reply_mode=reply_mode,
+                )
 
         if not self._cached_tools:
-            return self.llm_service.process_input(content, is_at_message=is_at_message)
+            return self.llm_service.process_input(
+                content,
+                is_at_message=is_at_message,
+                reply_mode=reply_mode,
+            )
 
-        return self._run_tool_loop(content, is_at_message=is_at_message)
+        return self._run_tool_loop(content, is_at_message=is_at_message, reply_mode=reply_mode)
 
     def list_mcp_tools(self) -> list[dict[str, Any]]:
         if self.mcp_client is None:
@@ -214,7 +233,13 @@ class AgentService:
             return
         atexit.register(self.mcp_client.close)
 
-    def _run_tool_loop(self, content: str, *, is_at_message: bool) -> str:
+    def _run_tool_loop(
+        self,
+        content: str,
+        *,
+        is_at_message: bool,
+        reply_mode: ReplyMode,
+    ) -> str:
         tools_json = json.dumps(self._cached_tools, ensure_ascii=False)
 
         prompt = (
@@ -230,7 +255,11 @@ class AgentService:
         )
 
         for _ in range(self.max_steps):
-            raw = self.llm_service.process_input(prompt, is_at_message=is_at_message)
+            raw = self.llm_service.process_input(
+                prompt,
+                is_at_message=is_at_message,
+                reply_mode=reply_mode,
+            )
             parsed = self._parse_json(raw)
             if not isinstance(parsed, dict):
                 return raw
@@ -271,7 +300,11 @@ class AgentService:
                 f"工具结果: {tool_result_text}"
             )
 
-        return self.llm_service.process_input(content, is_at_message=is_at_message)
+        return self.llm_service.process_input(
+            content,
+            is_at_message=is_at_message,
+            reply_mode=reply_mode,
+        )
 
     def _parse_json(self, raw: str) -> dict[str, Any] | None:
         text = raw.strip()

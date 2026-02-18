@@ -22,7 +22,8 @@
   },
   "heartbeat": {
     "sqlite_path": "data/heartbeat.db",
-    "scope": "default"
+    "scope": "default",
+    "tense_hold_seconds": 900
   },
   "qq": {
     "allowed_group_ids": [123456789]

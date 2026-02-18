@@ -11,6 +11,7 @@ class HeartbeatState:
     heartbeat: float
     is_tense: bool
     focus_text: str
+    tense_until_ts: int = 0
 
 
 @dataclass(slots=True)
@@ -27,25 +28,35 @@ class HeartbeatSQLiteStore:
                     heartbeat REAL NOT NULL,
                     is_tense INTEGER NOT NULL,
                     focus_text TEXT NOT NULL,
+                    tense_until_ts INTEGER NOT NULL DEFAULT 0,
                     updated_at INTEGER NOT NULL
                 )
                 """
             )
+            columns = {
+                str(row[1]).lower()
+                for row in conn.execute("PRAGMA table_info(heartbeat_state)").fetchall()
+            }
+            if "tense_until_ts" not in columns:
+                conn.execute(
+                    "ALTER TABLE heartbeat_state ADD COLUMN tense_until_ts INTEGER NOT NULL DEFAULT 0"
+                )
             conn.commit()
 
     def load(self, scope: str) -> HeartbeatState | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT heartbeat, is_tense, focus_text FROM heartbeat_state WHERE scope = ?",
+                "SELECT heartbeat, is_tense, focus_text, tense_until_ts FROM heartbeat_state WHERE scope = ?",
                 (scope,),
             ).fetchone()
         if row is None:
             return None
-        heartbeat, is_tense, focus_text = row
+        heartbeat, is_tense, focus_text, tense_until_ts = row
         return HeartbeatState(
             heartbeat=float(heartbeat),
             is_tense=bool(is_tense),
             focus_text=str(focus_text or ""),
+            tense_until_ts=int(tense_until_ts or 0),
         )
 
     def save(self, scope: str, state: HeartbeatState) -> None:
@@ -53,12 +64,13 @@ class HeartbeatSQLiteStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO heartbeat_state(scope, heartbeat, is_tense, focus_text, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO heartbeat_state(scope, heartbeat, is_tense, focus_text, tense_until_ts, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(scope) DO UPDATE SET
                     heartbeat = excluded.heartbeat,
                     is_tense = excluded.is_tense,
                     focus_text = excluded.focus_text,
+                    tense_until_ts = excluded.tense_until_ts,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -66,6 +78,7 @@ class HeartbeatSQLiteStore:
                     float(state.heartbeat),
                     int(state.is_tense),
                     state.focus_text,
+                    int(state.tense_until_ts),
                     now,
                 ),
             )

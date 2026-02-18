@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
+
+from src.prompting import PromptContext, PromptManager, ReplyMode
 
 
 @dataclass(slots=True)
@@ -14,6 +16,7 @@ class LLMService:
     api_key: str | None = None
     timeout: float = 15.0
     model: str = "default"
+    prompt_manager: PromptManager = field(default_factory=PromptManager.default)
 
     def __post_init__(self) -> None:
         if self.api_url is None:
@@ -21,7 +24,13 @@ class LLMService:
         if self.api_key is None:
             self.api_key = os.getenv("LLM_API_KEY")
 
-    def process_input(self, content: str, *, is_at_message: bool = False) -> str:
+    def process_input(
+        self,
+        content: str,
+        *,
+        is_at_message: bool = False,
+        reply_mode: ReplyMode = "auto",
+    ) -> str:
         """Send content to LLM API and return response text."""
         if not content.strip():
             return "输入不能为空。"
@@ -35,15 +44,14 @@ class LLMService:
                 base_url=self.api_url,
                 timeout=self.timeout,
             )
+            messages = self.prompt_manager.build_messages(
+                content,
+                context=PromptContext(mode=reply_mode, is_at_message=is_at_message),
+            )
             response = client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": content,
-                    }
-                ],
-                extra_body={"meta": {"at_user": is_at_message}},
+                messages=messages,
+                extra_body={"meta": {"at_user": is_at_message, "reply_mode": reply_mode}},
             )
         except APIStatusError as exc:
             body = ""

@@ -38,7 +38,15 @@
   - 当llm发出一次调用，进入紧张阶段，此时若外部与其反馈，则检测是否和其相关，若相关则做出回应维持；否则快速进入心率为0阶段
   - 心率为0时，持续监听外部输入，并缓慢增长，被唤醒几率逐渐增加
   - 在任何情况下被at / 在紧张状态时检测到用户与之互动则进入紧张状态
+  - 被 @ 后 `is_tense` 将保持为 `true` 一段时间（默认 900 秒，可配置 `heartbeat.tense_hold_seconds`），期间不受心率值影响
   - 支持将心跳状态持久化到 SQLite（默认 `data/heartbeat.db`）
+
+- ### Prompting
+  - 模块路径: `src/prompting/`
+  - 使用 `PromptManager` 统一管理系统提示词
+  - Prompt 文案配置路径: `config/prompts.json`
+  - 自动回复（心率触发）使用 `auto` prompt
+  - 紧张回复（被 @ 或消息进入时已处于紧张态）使用 `tense` prompt（在 `auto` 基础上叠加紧张补充）
 
 - ### Config
   - 负责统一管理依赖相关配置，并构建默认依赖实例

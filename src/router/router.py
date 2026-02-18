@@ -5,6 +5,7 @@ from src.agent import AgentService
 from src.context import ContextEngine
 from src.llm import LLMService
 from src.memory import MemoryPool
+from src.prompting import ReplyMode
 
 from .structured_service import StructuredService
 
@@ -69,8 +70,18 @@ class Router:
             return False
         return group_id in self._allowed_group_ids
 
-    def process_agent(self, content: str, *, is_at_message: bool) -> str:
-        return self._agent_service.process_input(content, is_at_message=is_at_message)
+    def process_agent(
+        self,
+        content: str,
+        *,
+        is_at_message: bool,
+        reply_mode: ReplyMode = "auto",
+    ) -> str:
+        return self._agent_service.process_input(
+            content,
+            is_at_message=is_at_message,
+            reply_mode=reply_mode,
+        )
 
     def handle_structured(self, command: StructuredCommand) -> str:
         return self._handle_structured_command(command)
@@ -83,14 +94,22 @@ class Router:
         return self._context_engine.handle_usr_msg(
             msg,
             is_direct_to_ai=False,
-            processor=lambda content: self.process_agent(content, is_at_message=False),
+            processor=lambda content: self.process_agent(
+                content,
+                is_at_message=False,
+                reply_mode="auto",
+            ),
         )
 
     def _handle_at_message(self, msg: str) -> str:
         result = self._context_engine.handle_usr_msg(
             msg,
             is_direct_to_ai=True,
-            processor=lambda content: self.process_agent(content, is_at_message=True),
+            processor=lambda content: self.process_agent(
+                content,
+                is_at_message=True,
+                reply_mode="tense",
+            ),
         )
         return result or "输入不能为空。"
 

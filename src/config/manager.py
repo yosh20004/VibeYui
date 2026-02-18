@@ -101,6 +101,7 @@ class ConfigManager:
         heartbeat_monitor = HeartbeatMonitor(
             state_store=heartbeat_store,
             state_scope=self._pick_str(heartbeat, "scope", default="default") or "default",
+            tense_hold_seconds=self._pick_int(heartbeat, "tense_hold_seconds", default=15 * 60),
         )
         return ContextEngine(
             memory_pool=memory_pool,

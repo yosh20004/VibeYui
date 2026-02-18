@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from src.prompting import ReplyMode
+
 
 class WorkflowHook(Protocol):
     """Pluggable hook for workflow lifecycle events."""
@@ -40,7 +42,7 @@ class RouterPort(Protocol):
 
     def should_process_message(self, *, source: str, group_id: int | None) -> bool: ...
 
-    def process_agent(self, content: str, *, is_at_message: bool) -> str: ...
+    def process_agent(self, content: str, *, is_at_message: bool, reply_mode: ReplyMode) -> str: ...
 
     def handle_structured(self, command: Any) -> str: ...
 
@@ -120,16 +122,19 @@ class MessageWorkflow:
             },
         )
 
+        was_tense_before = self.context_engine.heartbeat_monitor.is_tense
         should_reply = self.context_engine.heartbeat_monitor.should_invoke_llm(
             clean,
             is_at_message=at_user,
         )
+        reply_mode: ReplyMode = "tense" if (at_user or was_tense_before) else "auto"
         self._emit(
             "heartbeat.checked",
             {
                 "should_reply": should_reply,
                 "heartbeat": round(self.context_engine.heartbeat_monitor.heartbeat, 2),
                 "is_tense": self.context_engine.heartbeat_monitor.is_tense,
+                "reply_mode": reply_mode,
             },
         )
 
@@ -142,7 +147,11 @@ class MessageWorkflow:
         self.context_engine.remember_user_message(clean)
         self._emit("context.composed", {"has_history": "对话记忆" in composed})
 
-        reply = self.router.process_agent(composed, is_at_message=at_user)
+        reply = self.router.process_agent(
+            composed,
+            is_at_message=at_user,
+            reply_mode=reply_mode,
+        )
         if not reply.strip():
             self._emit("workflow.no_reply", {"reason": "empty_reply"})
             return None
