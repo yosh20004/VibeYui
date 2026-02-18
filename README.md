@@ -44,3 +44,7 @@
   - 配置模板: `config/dependencies.example.json`（可提交）
   - 本地依赖配置: `config/dependencies.local.json`（已加入 `.gitignore`，不提交）
   - 读取顺序: 优先本地配置文件，其次环境变量（`LLM_*` / `MCP_*`）
+
+- ### Adapter
+  - 基于NoneBot接受外部事件和群聊消息
+  - 获取群聊消息，并与核心组件交互做出回复
