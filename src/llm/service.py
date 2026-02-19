@@ -16,6 +16,7 @@ class LLMService:
     api_key: str | None = None
     timeout: float = 15.0
     model: str = "default"
+    temperature: float = 2.0
     prompt_manager: PromptManager = field(default_factory=PromptManager.default)
 
     def __post_init__(self) -> None:
@@ -51,6 +52,7 @@ class LLMService:
             response = client.chat.completions.create(
                 model=self.model,
                 messages=messages,
+                temperature=self.temperature,
                 extra_body={"meta": {"at_user": is_at_message, "reply_mode": reply_mode}},
             )
         except APIStatusError as exc:

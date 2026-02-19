@@ -56,6 +56,14 @@ class ConfigManager:
             api_key=self._pick_str(llm, "api_key", env_key="LLM_API_KEY"),
             timeout=self._pick_float(llm, "timeout", default=15.0),
             model=self._pick_str(llm, "model", default="default"),
+            temperature=self._pick_float_in_range(
+                llm,
+                "temperature",
+                env_key="LLM_TEMPERATURE",
+                default=2.0,
+                min_value=0.0,
+                max_value=2.0,
+            ),
         )
 
     def build_mcp_client(self) -> OfficialMCPClient | None:
@@ -183,6 +191,25 @@ class ConfigManager:
         except (TypeError, ValueError):
             return default
         return parsed if parsed > 0 else default
+
+    def _pick_float_in_range(
+        self,
+        section: dict[str, Any],
+        key: str,
+        *,
+        env_key: str | None = None,
+        default: float,
+        min_value: float,
+        max_value: float,
+    ) -> float:
+        value: Any = section.get(key)
+        if value is None and env_key:
+            value = os.getenv(env_key)
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return default
+        return min(max(parsed, min_value), max_value)
 
     def _pick_int(self, section: dict[str, Any], key: str, *, default: int) -> int:
         value = section.get(key)

@@ -3,7 +3,8 @@
     "api_url": "https://example.com/llm",
     "api_key": "replace-with-your-key",
     "timeout": 15,
-    "model": "default"
+    "model": "default",
+    "temperature": 2.0
   },
   "mcp": {
     "enabled": false,
