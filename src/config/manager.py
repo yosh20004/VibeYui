@@ -68,11 +68,16 @@ class ConfigManager:
 
     def build_mcp_client(self) -> OfficialMCPClient | None:
         mcp = self.section("mcp")
-        enabled = self._pick_bool(mcp, "enabled", env_key="MCP_ENABLED", default=False)
+        enabled = self._pick_bool(mcp, "enabled", env_key="MCP_ENABLED", default=True)
         if not enabled:
             return None
 
-        command = self._pick_str(mcp, "server_cmd", env_key="MCP_SERVER_CMD")
+        command = self._pick_str(
+            mcp,
+            "server_cmd",
+            env_key="MCP_SERVER_CMD",
+            default="python -m src.agent.mcp_servers.web_server",
+        )
         if not command:
             return None
 

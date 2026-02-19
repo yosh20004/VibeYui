@@ -36,6 +36,54 @@ class LLMService:
         if not content.strip():
             return "输入不能为空。"
 
+        messages = self.prompt_manager.build_messages(
+            content,
+            context=PromptContext(mode=reply_mode, is_at_message=is_at_message),
+        )
+        return self._request_completion(
+            messages,
+            is_at_message=is_at_message,
+            reply_mode=reply_mode,
+            temperature=self.temperature,
+        )
+
+    def process_input_with_system(
+        self,
+        content: str,
+        *,
+        system_prompt: str,
+        is_at_message: bool = False,
+        reply_mode: ReplyMode = "auto",
+        temperature: float | None = None,
+    ) -> str:
+        if not content.strip():
+            return "输入不能为空。"
+        if not system_prompt.strip():
+            return self.process_input(
+                content,
+                is_at_message=is_at_message,
+                reply_mode=reply_mode,
+            )
+
+        messages = [
+            {"role": "system", "content": system_prompt.strip()},
+            {"role": "user", "content": content},
+        ]
+        return self._request_completion(
+            messages,
+            is_at_message=is_at_message,
+            reply_mode=reply_mode,
+            temperature=self.temperature if temperature is None else temperature,
+        )
+
+    def _request_completion(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        is_at_message: bool,
+        reply_mode: ReplyMode,
+        temperature: float,
+    ) -> str:
         if not self.api_url:
             return "未配置 LLM API 地址（LLM_API_URL）。"
 
@@ -45,14 +93,10 @@ class LLMService:
                 base_url=self.api_url,
                 timeout=self.timeout,
             )
-            messages = self.prompt_manager.build_messages(
-                content,
-                context=PromptContext(mode=reply_mode, is_at_message=is_at_message),
-            )
             response = client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=self.temperature,
+                temperature=temperature,
                 extra_body={"meta": {"at_user": is_at_message, "reply_mode": reply_mode}},
             )
         except APIStatusError as exc:

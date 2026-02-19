@@ -29,6 +29,8 @@
 - ### Agent
   - 负责 LLM 与工具调用编排（是否调用工具、调用后回注结果）
   - 通过官方 `mcp` Python SDK 与 MCP Server 通信
+  - 默认会在 bot 启动时自动拉起 MCP server（默认命令: `python -m src.agent.mcp_servers.web_server`）
+  - 最终回复也通过 MCP 工具 `emit_reply` 提交，模型可通过 `should_reply=false` 选择不回复
   - 子模块: `mcp_servers`
   - 子模块路径: `src/agent/mcp_servers/`
   - 用于放置可被 Agent 连接的 MCP server（例如 `web_server.py`）

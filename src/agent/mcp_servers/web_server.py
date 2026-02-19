@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("VibeYui-WebSearch")
+mcp = FastMCP("VibeYui-AgentServer")
 
 
 def _serper_api_key() -> str:
@@ -88,5 +88,34 @@ def web_search(query: str, num_results: int = 5) -> str:
     )
 
 
+@mcp.tool()
+def emit_reply(
+    content: str = "",
+    should_reply: bool = True,
+    reason: str = "",
+) -> dict[str, object]:
+    """Finalize LLM output. Set should_reply=false to suppress sending message."""
+    text = content.strip()
+    if not should_reply:
+        return {
+            "should_reply": False,
+            "reply": "",
+            "reason": reason.strip() or "model_choose_no_reply",
+        }
+
+    if not text:
+        return {
+            "should_reply": False,
+            "reply": "",
+            "reason": reason.strip() or "empty_content",
+        }
+
+    return {
+        "should_reply": True,
+        "reply": text,
+        "reason": reason.strip() or "finalized",
+    }
+
+
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="stdio")

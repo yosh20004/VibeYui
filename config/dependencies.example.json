@@ -7,7 +7,7 @@
     "temperature": 2.0
   },
   "mcp": {
-    "enabled": false,
+    "enabled": true,
     "server_cmd": "python -m src.agent.mcp_servers.web_server",
     "request_timeout": 10,
     "startup_timeout": 15
