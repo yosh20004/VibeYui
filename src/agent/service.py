@@ -190,6 +190,10 @@ class AgentService:
         is_at_message: bool = False,
         reply_mode: ReplyMode = "auto",
     ) -> str:
+        if self._is_passive_tense_mode(is_at_message=is_at_message, reply_mode=reply_mode):
+            if not self._should_reply_for_passive_tense(content):
+                return ""
+
         if self.mcp_client is None:
             return self.llm_service.process_input(
                 content,
@@ -215,6 +219,30 @@ class AgentService:
             )
 
         return self._run_tool_loop(content, is_at_message=is_at_message, reply_mode=reply_mode)
+
+    def _is_passive_tense_mode(self, *, is_at_message: bool, reply_mode: ReplyMode) -> bool:
+        return reply_mode == "tense" and not is_at_message
+
+    def _should_reply_for_passive_tense(self, content: str) -> bool:
+        judge_prompt = (
+            "你是回复门控器。目标：判断这条消息是否值得机器人在“紧张但未被@”状态下主动回复。"
+            "输入已包含当前消息、上下文和记忆。"
+            "如果明确需要机器人现在回复，输出 true；否则输出 false。"
+            "只能输出小写 true 或 false，不要任何其他字符。"
+        )
+        decision = self.llm_service.process_input_with_system(
+            content,
+            system_prompt=judge_prompt,
+            is_at_message=False,
+            reply_mode="tense",
+            temperature=0.0,
+        )
+        normalized = decision.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+        return False
 
     def list_mcp_tools(self) -> list[dict[str, Any]]:
         if self.mcp_client is None:
