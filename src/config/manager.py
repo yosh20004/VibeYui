@@ -102,7 +102,7 @@ class ConfigManager:
 
     def build_memory_pool(self) -> MemoryPool:
         memory = self.section("memory")
-        path = self._pick_str(memory, "file_path", default="data/memory_pool.jsonl")
+        path = self._pick_str(memory, "file_path", default="data/memory_pool")
         return MemoryPool(file_path=Path(path))
 
     def build_context_engine(self, memory_pool: MemoryPool) -> ContextEngine:

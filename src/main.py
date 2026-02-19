@@ -37,6 +37,7 @@ def build_app() -> None:
             at_user=activity.to_me,
             source="qq_group",
             group_id=activity.group_id,
+            user_name=activity.user_name,
         )
         if reply:
             await bot.send(event, reply)

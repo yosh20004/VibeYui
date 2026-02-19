@@ -14,27 +14,18 @@ class WorkflowHook(Protocol):
     def on_event(self, name: str, payload: dict[str, object]) -> None: ...
 
 
-class HeartbeatPort(Protocol):
-    @property
-    def heartbeat(self) -> float: ...
-
-    @property
-    def is_tense(self) -> bool: ...
-
-    def should_invoke_llm(self, message: str, *, is_at_message: bool) -> bool: ...
-
-    def on_llm_invoked(self, trigger_message: str, reply: str) -> None: ...
-
-
 class ContextPort(Protocol):
-    @property
-    def heartbeat_monitor(self) -> HeartbeatPort: ...
+    def heartbeat_snapshot(self, *, scope: str = "default") -> tuple[float, bool]: ...
 
-    def compose_input(self, current_msg: str) -> str: ...
+    def should_invoke_llm(self, message: str, *, is_at_message: bool, scope: str = "default") -> bool: ...
 
-    def remember_user_message(self, msg: str) -> None: ...
+    def on_llm_invoked(self, trigger_message: str, reply: str, *, scope: str = "default") -> None: ...
 
-    def remember_assistant_message(self, msg: str) -> None: ...
+    def compose_input(self, current_msg: str, *, scope: str = "default") -> str: ...
+
+    def remember_user_message(self, msg: str, *, scope: str = "default", user_name: str | None = None) -> None: ...
+
+    def remember_assistant_message(self, msg: str, *, scope: str = "default") -> None: ...
 
 
 class RouterPort(Protocol):
@@ -90,6 +81,7 @@ class MessageWorkflow:
         command: Any = None,
         source: str = "adapter",
         group_id: int | None = None,
+        user_name: str | None = None,
     ) -> str | None:
         if command is not None:
             response = self.router.handle_structured(command)
@@ -119,32 +111,39 @@ class MessageWorkflow:
                 "source": source,
                 "message": clean,
                 "at_user": at_user,
+                "group_id": group_id,
+                "user_name": user_name,
             },
         )
 
-        was_tense_before = self.context_engine.heartbeat_monitor.is_tense
-        should_reply = self.context_engine.heartbeat_monitor.should_invoke_llm(
+        scope = self._scope(source=source, group_id=group_id)
+
+        _, was_tense_before = self.context_engine.heartbeat_snapshot(scope=scope)
+        should_reply = self.context_engine.should_invoke_llm(
             clean,
             is_at_message=at_user,
+            scope=scope,
         )
+        heartbeat_value, is_tense_now = self.context_engine.heartbeat_snapshot(scope=scope)
         reply_mode: ReplyMode = "tense" if (at_user or was_tense_before) else "auto"
         self._emit(
             "heartbeat.checked",
             {
                 "should_reply": should_reply,
-                "heartbeat": round(self.context_engine.heartbeat_monitor.heartbeat, 2),
-                "is_tense": self.context_engine.heartbeat_monitor.is_tense,
+                "heartbeat": round(heartbeat_value, 2),
+                "is_tense": is_tense_now,
                 "reply_mode": reply_mode,
+                "scope": scope,
             },
         )
 
         if not should_reply:
-            self.context_engine.remember_user_message(clean)
+            self.context_engine.remember_user_message(clean, scope=scope, user_name=user_name)
             self._emit("context.user_recorded", {"reply": False})
             return None
 
-        composed = self.context_engine.compose_input(clean)
-        self.context_engine.remember_user_message(clean)
+        composed = self.context_engine.compose_input(clean, scope=scope)
+        self.context_engine.remember_user_message(clean, scope=scope, user_name=user_name)
         self._emit("context.composed", {"has_history": "对话记忆" in composed})
 
         reply = self.router.process_agent(
@@ -156,8 +155,8 @@ class MessageWorkflow:
             self._emit("workflow.no_reply", {"reason": "empty_reply"})
             return None
 
-        self.context_engine.remember_assistant_message(reply)
-        self.context_engine.heartbeat_monitor.on_llm_invoked(clean, reply)
+        self.context_engine.remember_assistant_message(reply, scope=scope)
+        self.context_engine.on_llm_invoked(clean, reply, scope=scope)
         self._emit("workflow.replied", {"reply": reply})
         return reply
 
@@ -170,3 +169,8 @@ class MessageWorkflow:
                 hook.on_event(name, payload)
             except Exception:
                 continue
+
+    def _scope(self, *, source: str, group_id: int | None) -> str:
+        if source == "qq_group" and group_id is not None:
+            return f"qq_group_{group_id}"
+        return source or "default"

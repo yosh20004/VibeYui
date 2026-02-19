@@ -16,7 +16,7 @@
     "max_steps": 3
   },
   "memory": {
-    "file_path": "data/memory_pool.jsonl"
+    "file_path": "data/memory_pool"
   },
   "context": {
     "recent_limit": 100

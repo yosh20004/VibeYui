@@ -1,6 +1,5 @@
 from .workflow import (
     ContextPort,
-    HeartbeatPort,
     LoggingHook,
     MessageWorkflow,
     RouterPort,
@@ -13,5 +12,4 @@ __all__ = [
     "LoggingHook",
     "RouterPort",
     "ContextPort",
-    "HeartbeatPort",
 ]

@@ -23,8 +23,9 @@
 
 - ### Memory Pool
   - 负责管理更远期记忆（长时记忆）
-  - 写入时立即落盘（`data/memory_pool.jsonl`）防止丢失
-  - Context Engine 启动时从 Memory Pool 回填最近上下文
+  - 按会话作用域分文件落盘（默认 QQ 群为 `data/memory_pool/qq_group_<group_id>.jsonl`）防止串群
+  - 每条记录包含 `value`、`timestamp`（UTC ISO 时间）和 `user_name`（用户消息时可用）
+  - Context Engine 按作用域从 Memory Pool 回填最近上下文
 
 - ### Agent
   - 负责 LLM 与工具调用编排（是否调用工具、调用后回注结果）
@@ -37,6 +38,8 @@
 
 - ### HeartbeatMonitor
   - 维持心率: 心率越高，llm越有可能产生一次调用
+  - 心率状态按会话作用域隔离（QQ 群按群号），不同群互不影响
+  - 心跳状态按作用域持久化到 SQLite，重启后可恢复各群状态
   - 当llm发出一次调用，进入紧张阶段，此时若外部与其反馈，则检测是否和其相关，若相关则做出回应维持；否则快速进入心率为0阶段
   - 心率为0时，持续监听外部输入，并缓慢增长，被唤醒几率逐渐增加
   - 在任何情况下被at / 在紧张状态时检测到用户与之互动则进入紧张状态
