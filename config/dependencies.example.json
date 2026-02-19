@@ -9,6 +9,7 @@
   "mcp": {
     "enabled": true,
     "server_cmd": "python -m src.agent.mcp_servers.web_server",
+    "serper_api_key": "replace-with-your-serper-key",
     "request_timeout": 10,
     "startup_timeout": 15
   },

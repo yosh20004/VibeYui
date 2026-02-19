@@ -72,6 +72,16 @@ class ConfigManager:
         if not enabled:
             return None
 
+        # Allow storing search provider key in local dependency config,
+        # while still supporting direct environment variable injection.
+        serper_api_key = self._pick_str(
+            mcp,
+            "serper_api_key",
+            env_key="SERPER_API_KEY",
+        )
+        if serper_api_key:
+            os.environ["SERPER_API_KEY"] = serper_api_key
+
         command = self._pick_str(
             mcp,
             "server_cmd",
